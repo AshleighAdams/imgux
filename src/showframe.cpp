@@ -20,6 +20,8 @@ int main(int argc, char** argv)
 	imgux::frame_setup();
 	cv::namedWindow(title, cv::WINDOW_AUTOSIZE);
 	
+	std::cerr << "creating window " << title << "\n";
+	
 	cv::Mat mat;
 	imgux::frame_info info;
 	

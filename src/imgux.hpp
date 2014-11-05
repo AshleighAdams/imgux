@@ -35,8 +35,10 @@ namespace imgux
 	std::string get_output_format();
 	
 	// opencv
+	bool frame_read(cv::Mat& output, frame_info& info, std::istream& instream);
 	bool frame_read(cv::Mat& output, frame_info& info);
 	bool frame_write(const cv::Mat& input, const frame_info& info);
+	bool frame_write(const cv::Mat& input, const frame_info& info, std::ostream& ostream);
 }
 
 #endif

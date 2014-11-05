@@ -142,6 +142,16 @@ std::istream* stream_in = nullptr;
 std::ostream* stream_out = nullptr;
 bool setup = false;
 
+struct state_info
+{
+	bool first = true;
+	int width = 0;
+	int height = 0;
+	size_t elm_size = 0;
+	size_t type = 0;
+	size_t data_size = 0;
+};
+
 void imgux::frame_setup()
 {
 	std::string input, output;
@@ -156,23 +166,13 @@ void imgux::frame_setup()
 }
 
 // OpenCV frame read/writers
-bool imgux::frame_read(cv::Mat& output, frame_info& info)
+bool imgux::frame_read(cv::Mat& output, frame_info& info, std::istream& sin)
 {
-	assert(setup);
-	std::istream& sin = *stream_in;
-	
 	if(sin.eof())
 		return false;
 	
-	static struct
-	{
-		bool first = true;
-		int width = 0;
-		int height = 0;
-		size_t elm_size = 0;
-		size_t type = 0;
-		size_t data_size = 0;
-	} state;
+	static std::unordered_map<const cv::Mat*, state_info> states;
+	state_info& state = states[&output];
 	
 	if(state.first)
 	{
@@ -203,20 +203,10 @@ bool imgux::frame_read(cv::Mat& output, frame_info& info)
 	return !sin.eof();
 }
 
-bool imgux::frame_write(const cv::Mat& input, const frame_info& info)
-{
-	assert(setup);
-	std::ostream& sout = *stream_out;	
-	
-	static struct
-	{
-		bool first = true;
-		int width = 0;
-		int height = 0;
-		size_t elm_size = 0;
-		size_t type = 0;
-		size_t data_size = 0;
-	} state;
+bool imgux::frame_write(const cv::Mat& input, const frame_info& info, std::ostream& sout)
+{	
+	static std::unordered_map<const cv::Mat*, state_info> states;
+	state_info& state = states[&input];
 	
 	if(state.first)
 	{
@@ -238,4 +228,15 @@ bool imgux::frame_write(const cv::Mat& input, const frame_info& info)
 	sout.write((const char*)input.ptr(), state.data_size);
 	
 	return !sout.badbit;
+}
+
+bool imgux::frame_read(cv::Mat& output, frame_info& info)
+{
+	assert(setup);
+	return imgux::frame_read(output, info, *stream_in);
+}
+bool imgux::frame_write(const cv::Mat& input, const frame_info& info)
+{
+	assert(setup);
+	return imgux::frame_write(input, info, *stream_out);
 }

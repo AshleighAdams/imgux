@@ -7,6 +7,7 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/video/background_segm.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
 static void HSVtoRGB(double h, double s, double v, double& r, double& g, double& b)
 {
@@ -70,6 +71,8 @@ int main(int argc, char** argv)
 	imgux::arguments_add("poly-sigma", "1.2", "");
 	
 	imgux::arguments_add("colourize", "0", "Should we produce a colourized hue (ang) sat (speed), val(speed) output");
+	imgux::arguments_add("scalar", "1.0", "Multiply size by this");
+	imgux::arguments_add("visualize", "0", "Visualize the flow?");
 	
 	imgux::arguments_parse(argc, argv);
 	double pyr_scale; int levels; int winsize; int iterations; int poly_n; double poly_sigma;
@@ -81,15 +84,20 @@ int main(int argc, char** argv)
 	imgux::arguments_get("poly-n", poly_n);
 	imgux::arguments_get("poly-sigma", poly_sigma);
 	
-	bool colourize;
+	bool colourize, visualize;
+	double s = 1.0;
 	imgux::arguments_get("colourize", colourize);
+	imgux::arguments_get("scalar", s);
+	imgux::arguments_get("visualize", visualize);
+	s = 1.0/s;
 	
 	imgux::frame_setup();
 	imgux::frame_info info;
 	
 	//cv::calcOpticalFlowFarneback(mat_b, mat_a, mat_flow
 	
-	double s = 1.0;
+	if(visualize)
+		cv::namedWindow("Optical Flow");
 	
 	cv::Mat GetImg;
 	cv::Mat prvs, next;
@@ -108,13 +116,19 @@ int main(int argc, char** argv)
 		cv::Mat flow;
 		cv::calcOpticalFlowFarneback(prvs, next, flow, pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0 | cv::OPTFLOW_FARNEBACK_GAUSSIAN);
 		
-		if(colourize)
+		if(colourize || visualize)
 		{
 			cv::Mat cflow;
 			cv::cvtColor(prvs, cflow, CV_GRAY2BGR);
 			colorizeFlow(flow, cflow);
-		
-			imgux::frame_write(cflow, info);
+			
+			if(colourize)
+				imgux::frame_write(cflow, info);
+			if(visualize)
+			{
+				cv::imshow("Optical Flow", cflow);
+				cv::waitKey(1);
+			}
 		}
 		else
 			imgux::frame_write(flow, info);
