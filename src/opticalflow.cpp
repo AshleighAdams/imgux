@@ -1,0 +1,127 @@
+#include <imgux.hpp>
+
+#include <iostream>
+#include <string>
+#include <sstream>
+
+#include <opencv2/opencv.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/video/background_segm.hpp>
+
+static void HSVtoRGB(double h, double s, double v, double& r, double& g, double& b)
+{
+	h /= 360.0;
+	r = g = b = 0;
+	double i = floor(h * 6);
+    double f = h * 6 - i;
+    double p = v * (1 - s);
+    double q = v * (1 - f * s);
+    double t = v * (1 - (1 - f) * s);
+
+    switch((int)i % 6)
+    {
+        case 0: r = v, g = t, b = p; break;
+        case 1: r = q, g = v, b = p; break;
+        case 2: r = p, g = v, b = t; break;
+        case 3: r = p, g = q, b = v; break;
+        case 4: r = t, g = p, b = v; break;
+        case 5: r = v, g = p, b = q; break;
+    }
+	
+	r *= 255;
+	g *= 255;
+	b *= 255;
+}
+
+static void colorizeFlow(const cv::Mat &u, cv::Mat &dst)
+{
+	using namespace cv;
+	
+	dst.create(u.size(), CV_8UC3);
+	for (int y = 0; y < u.rows; ++y)
+	{
+		for (int x = 0; x < u.cols; ++x)
+		{
+			Point2f vel = u.at<Point2f>(y, x);
+			double ang = atan2(vel.x, vel.y) / M_PI * 180.0;
+			if(ang < 0)
+				ang += 360.0;
+			
+			double sat = ::sqrt(vel.x*vel.x + vel.y*vel.y) * 1.0 / 5.0;
+			sat = sat > 1.0 ? 1.0 : sat;
+			
+			double r = 0,g = 0, b = 0;
+			HSVtoRGB(ang, sat, sat, r, g, b);
+			
+			dst.at<uchar>(y,3*x) = b;
+			dst.at<uchar>(y,3*x+1) = g;
+			dst.at<uchar>(y,3*x+2) = r;
+		}
+	}
+}
+
+int main(int argc, char** argv)
+{		
+	imgux::arguments_add("pyr-scale", "0.5", "");
+	imgux::arguments_add("levels", "1", "");
+	imgux::arguments_add("winsize", "20", "");
+	imgux::arguments_add("iterations", "2", "");
+	imgux::arguments_add("poly-n", "5", "");
+	imgux::arguments_add("poly-sigma", "1.2", "");
+	
+	imgux::arguments_add("colourize", "0", "Should we produce a colourized hue (ang) sat (speed), val(speed) output");
+	
+	imgux::arguments_parse(argc, argv);
+	double pyr_scale; int levels; int winsize; int iterations; int poly_n; double poly_sigma;
+	
+	imgux::arguments_get("pyr-scale", pyr_scale);
+	imgux::arguments_get("levels", levels);
+	imgux::arguments_get("winsize", winsize);
+	imgux::arguments_get("iterations", iterations);
+	imgux::arguments_get("poly-n", poly_n);
+	imgux::arguments_get("poly-sigma", poly_sigma);
+	
+	bool colourize;
+	imgux::arguments_get("colourize", colourize);
+	
+	imgux::frame_setup();
+	imgux::frame_info info;
+	
+	//cv::calcOpticalFlowFarneback(mat_b, mat_a, mat_flow
+	
+	double s = 1.0;
+	
+	cv::Mat GetImg;
+	cv::Mat prvs, next;
+	
+	imgux::frame_read(GetImg, info);
+	cv::resize(GetImg, prvs, cv::Size(GetImg.size().width/s, GetImg.size().height/s));
+	cv::cvtColor(prvs, prvs, CV_BGR2GRAY);
+	
+	while (true)
+	{
+		if(!imgux::frame_read(GetImg, info))
+			break;
+		cv::resize(GetImg, next, cv::Size(GetImg.size().width/s, GetImg.size().height/s) );
+		cv::cvtColor(next, next, CV_BGR2GRAY);
+		
+		cv::Mat flow;
+		cv::calcOpticalFlowFarneback(prvs, next, flow, pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0 | cv::OPTFLOW_FARNEBACK_GAUSSIAN);
+		
+		if(colourize)
+		{
+			cv::Mat cflow;
+			cv::cvtColor(prvs, cflow, CV_GRAY2BGR);
+			colorizeFlow(flow, cflow);
+		
+			imgux::frame_write(cflow, info);
+		}
+		else
+			imgux::frame_write(flow, info);
+		
+		prvs = next.clone();
+	}
+	
+	return 0;
+}
+
