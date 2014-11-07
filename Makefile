@@ -13,7 +13,7 @@ LIBS   += `pkg-config $(PKG_CONFIG) --libs`
 SOURCES = src/*.cpp src/*.hpp
 OBJECTS = $(SOURCES:.cpp=.o)
 
-all: libimgux.so videosource showframe opticalflow flow-motiontrack
+all: libimgux.so videosource showframe recordframes opticalflow flow-motiontrack
 
 libimgux.o: src/imgux.hpp src/imgux.cpp
 	$(CXX) $(CFLAGS) -o $@ -c -fPIC src/imgux.cpp
@@ -24,6 +24,8 @@ videosource: libimgux.so src/videosource.cpp
 	$(CXX) $(CFLAGS) -o $@ src/$@.cpp $(LIBS) -limgux -I./src/ -L./
 
 showframe: libimgux.so src/showframe.cpp
+	$(CXX) $(CFLAGS) -o $@ src/$@.cpp $(LIBS) -limgux -I./src/ -L./
+recordframes: libimgux.so src/recordframes.cpp
 	$(CXX) $(CFLAGS) -o $@ src/$@.cpp $(LIBS) -limgux -I./src/ -L./
 
 opticalflow: libimgux.so src/opticalflow.cpp

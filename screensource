@@ -1,0 +1,22 @@
+#!/bin/bash
+
+export LD_LIBRARY_PATH=.
+
+FPS=15
+QUALITY=0
+SOURCE=".screencap.avi"
+
+rm .screencap.avi
+mkfifo .screencap.avi
+
+./videosource "$SOURCE" $@ &
+
+avconv \
+	-vsync 1 -async 1 \
+	$AUDIO_DEVICE \
+	-f x11grab -s 1920x1080 -r $FPS -i :0.0 \
+	-qscale $QUALITY \
+	-y "$SOURCE" \
+> /dev/stderr # we don't want to screw with the output...
+
+wait

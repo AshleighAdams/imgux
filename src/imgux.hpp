@@ -35,6 +35,9 @@ namespace imgux
 	std::istream* frame_default_input();
 	std::ostream* frame_default_output();
 	
+	// generic things to read frame infos
+	double frameinfo_time(const imgux::frame_info& info);
+	
 	// opencv
 	bool frame_read(cv::Mat& output, imgux::frame_info& info, std::istream& instream);
 	bool frame_write(const cv::Mat& input, const imgux::frame_info& info, std::ostream& ostream);

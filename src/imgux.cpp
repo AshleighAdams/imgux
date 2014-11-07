@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <sstream>
 #include <fstream>
+#include <regex>
 // STD
 #include <cassert>
 
@@ -181,6 +182,21 @@ std::istream* imgux::frame_default_input()
 std::ostream* imgux::frame_default_output()
 {
 	return stream_out;
+}
+
+double imgux::frameinfo_time(const imgux::frame_info& info)
+{
+	static std::regex time_regex("time=([0-9\\.]+)");
+	std::smatch match;
+	double time = -1.0;
+	
+	if(std::regex_search(info.info, match, time_regex))
+	{
+		std::string str = match[1];
+		time = std::strtod(str.c_str(), 0);
+	}
+	
+	return time;
 }
 
 // OpenCV frame read/writers

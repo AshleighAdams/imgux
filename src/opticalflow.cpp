@@ -3,6 +3,7 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <regex>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
@@ -37,6 +38,7 @@ static void HSVtoRGB(double h, double s, double v, double& r, double& g, double&
 static void colorizeFlow(const cv::Mat &u, cv::Mat &dst)
 {
 	using namespace cv;
+	double max_vel = 0.25;
 	
 	dst.create(u.size(), CV_8UC3);
 	for (int y = 0; y < u.rows; ++y)
@@ -49,21 +51,23 @@ static void colorizeFlow(const cv::Mat &u, cv::Mat &dst)
 			if(ang < 0)
 				ang += 360.0;
 			
-			double sat = ::sqrt(vel.x*vel.x + vel.y*vel.y) * 1.0 / 5.0;
+			double sat = ::sqrt(vel.x*vel.x + vel.y*vel.y);
+			
+			sat = sat / max_vel;
 			sat = sat > 1.0 ? 1.0 : sat;
 			
 			double r = 0,g = 0, b = 0;
 			HSVtoRGB(ang, sat, sat, r, g, b);
 			
 			/*
-			double speed = sqrt(vel.x*vel.x + vel.y*vel.y);
+			double speed = sqrt(vel.x*vel.x + vel.y*vel.y) * delta;
 			double r = 0,g = 0, b = 0;
-			r = speed / 1.0 * 255.0;
-			if(r > 255)
-				r = 255;
-			g = b = r;
-			*/
 			
+			if(speed > 10)
+				r = 255;
+			else if(speed > 5)
+				b = 255;
+			*/
 			dst.at<uchar>(y,3*x) = b;
 			dst.at<uchar>(y,3*x+1) = g;
 			dst.at<uchar>(y,3*x+2) = r;
@@ -83,6 +87,7 @@ int main(int argc, char** argv)
 	imgux::arguments_add("colourize", "0", "Should we produce a colourized hue (ang) sat (speed), val(speed) output");
 	imgux::arguments_add("scale", "1.0", "Multiply size by this");
 	imgux::arguments_add("visualize", "0", "Visualize the flow?");
+	imgux::arguments_add("velocity-fix", "1", "Should we multiply the velocity by the frame time?");
 	
 	imgux::arguments_parse(argc, argv);
 	double pyr_scale; int levels; int winsize; int iterations; int poly_n; double poly_sigma;
@@ -94,11 +99,12 @@ int main(int argc, char** argv)
 	imgux::arguments_get("poly-n", poly_n);
 	imgux::arguments_get("poly-sigma", poly_sigma);
 	
-	bool colourize, visualize;
+	bool colourize, visualize, velocity_fix;
 	double s = 1.0;
 	imgux::arguments_get("colourize", colourize);
 	imgux::arguments_get("scale", s);
 	imgux::arguments_get("visualize", visualize);
+	imgux::arguments_get("velocity-fix", velocity_fix);
 	s = 1.0/s;
 	
 	imgux::frame_setup();
@@ -109,12 +115,22 @@ int main(int argc, char** argv)
 	if(visualize)
 		cv::namedWindow("Optical Flow");
 	
+	std::regex time_regex("time=([0-9\\.]+)");
+	std::smatch match;
+	double time = 0.0, delta = 1.0;
+	
 	cv::Mat GetImg;
 	cv::Mat prvs, next;
 	
 	imgux::frame_read(GetImg, info);
 	cv::resize(GetImg, prvs, cv::Size(GetImg.size().width/s, GetImg.size().height/s));
 	cv::cvtColor(prvs, prvs, CV_BGR2GRAY);
+	
+	if(velocity_fix and std::regex_search(info.info, match, time_regex))
+	{
+		std::string str = match[1];
+		time = std::strtod(str.c_str(), 0);
+	}
 	
 	
 	while (true)
@@ -124,8 +140,29 @@ int main(int argc, char** argv)
 		cv::resize(GetImg, next, cv::Size(GetImg.size().width/s, GetImg.size().height/s) );
 		cv::cvtColor(next, next, CV_BGR2GRAY);		
 		
+		if(velocity_fix and std::regex_search(info.info, match, time_regex))
+		{
+			std::string str = match[1];
+			double new_time = std::strtod(str.c_str(), 0);
+			delta = new_time - time;
+			time = new_time;
+		}
+		else if(velocity_fix)
+			std::cerr << "opticalflow: warning: could not find `time' in the frame information!\n";
+		
 		cv::Mat flow;
 		cv::calcOpticalFlowFarneback(prvs, next, flow, pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0);// | cv::OPTFLOW_FARNEBACK_GAUSSIAN);
+		
+		if(velocity_fix) // make these readings time-independant
+		{
+			for(int y = 0; y < flow.rows; y++)
+			for(int x = 0; x < flow.cols; x++)
+			{
+				cv::Point2f& vec = flow.at<cv::Point2f>(y, x);
+				vec.x *= delta;
+				vec.y *= delta;
+			}
+		}
 		
 		if(colourize || visualize)
 		{

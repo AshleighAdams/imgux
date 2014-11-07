@@ -86,7 +86,7 @@ int main(int argc, char** argv)
 	{
 		double t = time();
 		std::stringstream ss;
-		ss << "time=" << t << ";";
+		ss << std::fixed << "time=" << t << (index == -1 ? ";device" : ";name=") << file;
 		
 		imgux::frame_info info;
 		info.info = ss.str();

@@ -6,13 +6,24 @@
 #include <sstream>
 #include <thread>
 #include <functional>
+#include <algorithm>
 #include <mutex>
 
-struct Rectf
+struct Island
 {
-	float x, y, w, h;
-	Rectf(float x, float y, float w, float h) : x(x), y(y), w(w), h(h)
+	double x, y, w, h, xvel, yvel;
+	bool eaten = false;
+	double avg_xvel, avg_yvel, eaten_count;
+	Island(double x, double y, double w, double h, double xvel, double yvel) : x(x), y(y), w(w), h(h), xvel(xvel), yvel(yvel), avg_xvel(xvel), avg_yvel(yvel), eaten_count(1)
 	{
+	}
+	double cx()
+	{
+		return x + w / 2.0;
+	}
+	double cy()
+	{
+		return y + h / 2.0;
 	}
 };
 
@@ -20,11 +31,17 @@ int main(int argc, char** argv)
 {
 	imgux::arguments_add("background-frame", "", "The input frame to draw over");
 	imgux::arguments_add("flow-frame", "/dev/stdin", "The input frame to for optical flow");
+	imgux::arguments_add("threshold-big", "0.05", "Flow velocity to seed a frame.  Independant of frame size");
+	imgux::arguments_add("threshold-small", "0.01", "Once a seed has been found, how greedy should we be?.  Independant of frame size");
 	imgux::arguments_parse(argc, argv);
 	
 	std::string	background_frame, flow_frame;
+	double threshold_big, threshold_small;
+	
 	imgux::arguments_get("background-frame", background_frame);
 	imgux::arguments_get("flow-frame", flow_frame);
+	imgux::arguments_get("threshold-big", threshold_big);
+	imgux::arguments_get("threshold-small", threshold_small);
 	
 	assert(background_frame != "");
 	assert(flow_frame != "");
@@ -40,8 +57,12 @@ int main(int argc, char** argv)
 	bool running = true;
 	
 	cv::Scalar red(0, 0, 255);
+	cv::Scalar green(0, 255, 0);
+	cv::Scalar orange(0, 128, 255);
+	cv::Scalar yellow(0, 255, 255);
 	
-	std::vector<Rectf> targets;
+	std::vector<Island> targets;
+	std::vector<Island> targets_grouped;
 	std::mutex targets_lock;
 	
 	std::thread t_bg([&]
@@ -52,11 +73,43 @@ int main(int argc, char** argv)
 				break;
 			
 			targets_lock.lock();
-			
-			for(const Rectf& rect : targets)
+						
+			for(const Island& island : targets)
 			{
-				cv::Rect cvrect(rect.x*bg.cols, rect.y*bg.rows, rect.w*bg.cols, rect.h*bg.rows);
-				cv::rectangle(bg, cvrect, red);
+				int x = island.x * bg.cols;
+				int y = island.y * bg.rows;
+				int w = island.w * bg.cols;
+				int h = island.h * bg.rows;
+				int vx = island.xvel * 20.0 * bg.cols;
+				int vy = island.yvel * 20.0 * bg.rows;
+				
+				x++;y++;w-=2;h-=2;
+				cv::Rect cvrect(x,y,w,h);
+				cv::Point center = cv::Point(x + w / 2, y + w / 2);
+				cv::Point to = cv::Point(center.x + vx, center.y + vy);
+				/*
+				cv::rectangle(bg, cvrect, green);
+				cv::line(bg, center, to, red);*/
+			}
+			
+			for(const Island& island : targets_grouped)
+			{
+				if(island.eaten)
+					continue;
+				
+				int x = island.x * bg.cols;
+				int y = island.y * bg.rows;
+				int w = island.w * bg.cols;
+				int h = island.h * bg.rows;
+				int vx = island.xvel * 20.0 * bg.cols;
+				int vy = island.yvel * 20.0 * bg.rows;
+				
+				cv::Rect cvrect(x,y,w,h);
+				cv::Point center = cv::Point(x + w / 2, y + w / 2);
+				cv::Point to = cv::Point(center.x + vx, center.y + vy);
+				
+				cv::rectangle(bg, cvrect, orange);
+				cv::line(bg, center, to, yellow);
 			}
 			
 			targets_lock.unlock();
@@ -140,56 +193,156 @@ int main(int argc, char** argv)
 		// blur it
 		//cv::blur(flow, flow, cv::Size(5, 5));
 		
-		float big_threshold = 1.0;
-		float small_threshold = big_threshold / 5;
+		float big_threshold = threshold_big;
+		float small_threshold = threshold_small;
 		
 		targets_lock.lock();
 		targets.clear();
+		
+		int minx = 0, maxx = 0, miny = 0, maxy = 0;
+		double countvel=0, velx=0, vely = 0;
+		auto testfunc = [&blobs,&maxx,&maxy,&minx,&miny,&countvel,&velx,&vely,small_threshold,&is_motion,&flow,&big_threshold](int xx, int yy, checkfor c)
+		{
+			bool ret;
+			uchar& b = blobs.at<uchar>(yy, xx);
+			
+			if(c == checkfor::nomotion)
+			{
+				ret = not is_motion(xx, yy, small_threshold) and b == 0;
+			}
+			else if(c == checkfor::motion)
+			{
+				ret = is_motion(xx, yy, small_threshold) and b == 0;
+				
+				if(ret) // update to scanned
+				{
+					if(xx < minx) minx = xx;
+					if(xx > maxx) maxx = xx;
+					if(yy < miny) miny = yy;
+					if(yy > maxy) maxy = yy;
+					
+					{
+						cv::Point2f vel = flow.at<cv::Point2f>(yy, xx);
+						float speed = sqrt(vel.x*vel.x + vel.y*vel.y);
+						
+						if(speed > big_threshold) // only count velocity from the larger thresholds so noise and stuff doesn't play any roles
+						{
+							countvel++;
+							velx += vel.x;
+							vely += vel.y;
+						}
+					}
+					
+					b = 1;
+				}
+			}
+			else if(c == checkfor::scanned)
+				ret = b == 1;
+			
+			return ret;
+		};
 		
 		for(int y = 0; y < flow.rows; y++)
 		for(int x = 0; x < flow.cols; x++)
 		{
 			if(blobs.at<uchar>(y,x) == 0 and is_motion(x, y, big_threshold))
 			{
-				int minx = x, maxx = x, miny = y, maxy = y;
-				scanline(x, y, [&blobs,&maxx,&maxy,&minx,&miny,small_threshold,&is_motion](int xx, int yy, checkfor c)
-				{
-					bool ret;
-					uchar& b = blobs.at<uchar>(yy, xx);
-					
-					if(c == checkfor::nomotion)
-					{
-						ret = not is_motion(xx, yy, small_threshold) and b == 0;
-					}
-					else if(c == checkfor::motion)
-					{
-						ret = is_motion(xx, yy, small_threshold) and b == 0;
-						
-						if(ret) // update to scanned
-						{
-							if(xx < minx) minx = xx;
-							if(xx > maxx) maxx = xx;
-							if(yy < miny) miny = yy;
-							if(yy > maxy) maxy = yy;
-							
-							b = 1;
-						}
-					}
-					else if(c == checkfor::scanned)
-						ret = b == 1;
-					
-					return ret;
-				});
+				minx = maxx = x;
+				miny = maxy = y;
+				countvel = velx = vely = 0;
+				scanline(x, y, testfunc);
 				
 				// scanline complete, we now have a blob, update the target's vector
 				float xperc = (float)minx / (float)blobs.cols;
 				float yperc = (float)miny / (float)blobs.rows;
 				float sizex = float(maxx - minx) / (float)blobs.cols;
 				float sizey = float(maxy - miny) / (float)blobs.rows;
+				velx = velx / countvel / (float)blobs.rows;
+				vely = vely / countvel / (float)blobs.rows;
 				
 				if(sizex > 0.01 and sizey > 0.01)
-					targets.emplace_back(xperc, yperc, sizex, sizey);
+					targets.emplace_back(xperc, yperc, sizex, sizey, velx, vely);
 			}
+		}
+		
+		targets_grouped = targets; // copy them
+		
+		size_t count = targets_grouped.size();
+		double eat_distance_perc = 200.0 / 100.0;
+		// every time we eat one, set i back to 0 (to re-test for newly ate, and bigger)
+		
+		bool changing = true;
+		int its = 0;
+		while(changing)
+		{
+			if(its++ > 100)
+			{
+				std::cerr << "flow-motiontrack: warning: ran over 100 iterations\n";
+				break;
+			}
+			
+			changing = false;
+			std::sort(targets_grouped.begin(), targets_grouped.end(), [](const Island& a, const Island& b)
+			{
+				return (a.w + a.h) < (b.w + b.h);
+			});
+		
+			for(int i = 0; i < count; i++)
+			{
+				Island& self = targets_grouped[i];
+				if(self.eaten)
+					continue;
+			
+				for(int k = i + 1; k < count; k++)
+				{
+					Island &other = targets_grouped[k];
+					if(other.eaten)
+						continue;
+				
+					double distx = std::abs(self.cx() - other.cx());
+					double disty = std::abs(self.cy() - other.cy());
+				
+					if(distx < self.w * eat_distance_perc and disty < self.h * eat_distance_perc)
+					{
+						// om-nom it
+						other.eaten = true;
+						
+						double self_endx = self.x + self.w;
+						double self_endy = self.y + self.h;
+					
+						double other_endx = other.x + other.w;
+						double other_endy = other.y + other.h;
+					
+						double x = std::min(self.x, other.x);
+						double y = std::min(self.y, other.y);
+					
+						double w = std::max(self_endx, other_endx) - x;
+						double h = std::max(self_endy, other_endy) - y;
+					
+						self.x = x;
+						self.y = y;
+						self.w = w;
+						self.h = h;
+					
+						self.avg_xvel += other.avg_xvel;
+						self.avg_yvel += other.avg_yvel;
+						self.eaten_count += other.eaten_count;
+						changing = true;
+					}
+				}
+			}
+			
+			// remove all eaten targets
+			std::remove_if(targets_grouped.begin(), targets_grouped.end(), [](const Island& a)
+			{
+				return a.eaten;
+			});
+		}
+		
+		for(Island& self : targets_grouped)
+		{
+			self.xvel = self.avg_xvel /= self.eaten_count;
+			self.yvel = self.avg_yvel /= self.eaten_count;
 		}
 		
 		targets_lock.unlock();
