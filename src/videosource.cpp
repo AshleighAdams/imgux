@@ -40,11 +40,14 @@ void rotate_image_90n(cv::Mat &src, cv::Mat &dst, int angle)
 int main(int argc, char** argv)
 {
 	imgux::arguments_add("rotate", "0", "Apply some rotation (90,180,270)");
+	imgux::arguments_add("scale", "1", "Scale the image");
 	imgux::arguments_parse(argc, argv);
 	std::vector<std::string> args = imgux::arguments_get_list();
 	
 	int rotate = 0;
+	double scale = 0;
 	imgux::arguments_get("rotate", rotate);
+	imgux::arguments_get("scale", scale);
 	
 	if(args.size() < 2)
 	{
@@ -66,7 +69,7 @@ int main(int argc, char** argv)
 	}
 	
 	cv::VideoCapture stream = index >= 0 ? cv::VideoCapture(index) : cv::VideoCapture(file);
-	cv::Mat frame;
+	cv::Mat frame, frame_out;
 	
 	if(!(stream.read(frame))) //get one frame form video
 	{
@@ -77,6 +80,8 @@ int main(int argc, char** argv)
 	std::cerr << "video source " << file << " opened\n";
 	imgux::frame_setup();
 	
+	cv::Size targsize = cv::Size((double)frame.size().width * scale, (double)frame.size().height * scale);
+	
 	while(true)
 	{
 		double t = time();
@@ -86,10 +91,12 @@ int main(int argc, char** argv)
 		imgux::frame_info info;
 		info.info = ss.str();
 		
-		if(rotate != 0)
-			rotate_image_90n(frame, frame, rotate);
+		cv::resize(frame, frame_out, targsize);
 		
-		imgux::frame_write(frame, info);
+		if(rotate != 0)
+			rotate_image_90n(frame_out, frame_out, rotate);
+		
+		imgux::frame_write(frame_out, info);
 		
 		if(!(stream.read(frame)))
 		{

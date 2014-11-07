@@ -165,6 +165,24 @@ void imgux::frame_setup()
 	setup = true;
 }
 
+void imgux::frame_close()
+{
+	delete stream_in;
+	delete stream_out;
+	stream_in = nullptr;
+	stream_out = nullptr;
+}
+
+std::istream* imgux::frame_default_input()
+{
+	return stream_in;
+}
+
+std::ostream* imgux::frame_default_output()
+{
+	return stream_out;
+}
+
 // OpenCV frame read/writers
 bool imgux::frame_read(cv::Mat& output, frame_info& info, std::istream& sin)
 {
@@ -230,13 +248,3 @@ bool imgux::frame_write(const cv::Mat& input, const frame_info& info, std::ostre
 	return !sout.badbit;
 }
 
-bool imgux::frame_read(cv::Mat& output, frame_info& info)
-{
-	assert(setup);
-	return imgux::frame_read(output, info, *stream_in);
-}
-bool imgux::frame_write(const cv::Mat& input, const frame_info& info)
-{
-	assert(setup);
-	return imgux::frame_write(input, info, *stream_out);
-}

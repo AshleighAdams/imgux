@@ -44,6 +44,7 @@ static void colorizeFlow(const cv::Mat &u, cv::Mat &dst)
 		for (int x = 0; x < u.cols; ++x)
 		{
 			Point2f vel = u.at<Point2f>(y, x);
+			
 			double ang = atan2(vel.x, vel.y) / M_PI * 180.0;
 			if(ang < 0)
 				ang += 360.0;
@@ -53,6 +54,15 @@ static void colorizeFlow(const cv::Mat &u, cv::Mat &dst)
 			
 			double r = 0,g = 0, b = 0;
 			HSVtoRGB(ang, sat, sat, r, g, b);
+			
+			/*
+			double speed = sqrt(vel.x*vel.x + vel.y*vel.y);
+			double r = 0,g = 0, b = 0;
+			r = speed / 1.0 * 255.0;
+			if(r > 255)
+				r = 255;
+			g = b = r;
+			*/
 			
 			dst.at<uchar>(y,3*x) = b;
 			dst.at<uchar>(y,3*x+1) = g;
@@ -64,14 +74,14 @@ static void colorizeFlow(const cv::Mat &u, cv::Mat &dst)
 int main(int argc, char** argv)
 {		
 	imgux::arguments_add("pyr-scale", "0.5", "");
-	imgux::arguments_add("levels", "1", "");
-	imgux::arguments_add("winsize", "20", "");
-	imgux::arguments_add("iterations", "2", "");
+	imgux::arguments_add("levels", "3", "");
+	imgux::arguments_add("winsize", "15", "");
+	imgux::arguments_add("iterations", "3", "");
 	imgux::arguments_add("poly-n", "5", "");
 	imgux::arguments_add("poly-sigma", "1.2", "");
 	
 	imgux::arguments_add("colourize", "0", "Should we produce a colourized hue (ang) sat (speed), val(speed) output");
-	imgux::arguments_add("scalar", "1.0", "Multiply size by this");
+	imgux::arguments_add("scale", "1.0", "Multiply size by this");
 	imgux::arguments_add("visualize", "0", "Visualize the flow?");
 	
 	imgux::arguments_parse(argc, argv);
@@ -87,7 +97,7 @@ int main(int argc, char** argv)
 	bool colourize, visualize;
 	double s = 1.0;
 	imgux::arguments_get("colourize", colourize);
-	imgux::arguments_get("scalar", s);
+	imgux::arguments_get("scale", s);
 	imgux::arguments_get("visualize", visualize);
 	s = 1.0/s;
 	
@@ -106,15 +116,16 @@ int main(int argc, char** argv)
 	cv::resize(GetImg, prvs, cv::Size(GetImg.size().width/s, GetImg.size().height/s));
 	cv::cvtColor(prvs, prvs, CV_BGR2GRAY);
 	
+	
 	while (true)
 	{
 		if(!imgux::frame_read(GetImg, info))
 			break;
 		cv::resize(GetImg, next, cv::Size(GetImg.size().width/s, GetImg.size().height/s) );
-		cv::cvtColor(next, next, CV_BGR2GRAY);
+		cv::cvtColor(next, next, CV_BGR2GRAY);		
 		
 		cv::Mat flow;
-		cv::calcOpticalFlowFarneback(prvs, next, flow, pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0 | cv::OPTFLOW_FARNEBACK_GAUSSIAN);
+		cv::calcOpticalFlowFarneback(prvs, next, flow, pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0);// | cv::OPTFLOW_FARNEBACK_GAUSSIAN);
 		
 		if(colourize || visualize)
 		{
@@ -130,7 +141,8 @@ int main(int argc, char** argv)
 				cv::waitKey(1);
 			}
 		}
-		else
+		
+		if(!colourize)
 			imgux::frame_write(flow, info);
 		
 		prvs = next.clone();

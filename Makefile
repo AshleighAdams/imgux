@@ -1,7 +1,7 @@
 include config
 
 CFLAGS += -g
-CFLAGS += -Werror --std=c++11 # -O3 
+CFLAGS += -Werror -Wfatal-errors --std=c++11 -O3 
 #LFLAGS += -shared
 #LIBS   += -lutil
 

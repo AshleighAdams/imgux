@@ -3,6 +3,7 @@
 
 // STL
 #include <iostream>
+#include <cassert>
 
 // OpenCV
 #include <opencv2/opencv.hpp>
@@ -30,15 +31,29 @@ namespace imgux
 	};
 	
 	void frame_setup();
-	
-	std::string get_input_format();
-	std::string get_output_format();
+	void frame_close();
+	std::istream* frame_default_input();
+	std::ostream* frame_default_output();
 	
 	// opencv
-	bool frame_read(cv::Mat& output, frame_info& info, std::istream& instream);
-	bool frame_read(cv::Mat& output, frame_info& info);
-	bool frame_write(const cv::Mat& input, const frame_info& info);
-	bool frame_write(const cv::Mat& input, const frame_info& info, std::ostream& ostream);
+	bool frame_read(cv::Mat& output, imgux::frame_info& info, std::istream& instream);
+	bool frame_write(const cv::Mat& input, const imgux::frame_info& info, std::ostream& ostream);
+	
+	// Templated functions
+	template<typename T>
+	inline bool frame_read(T& output, frame_info& info)
+	{
+		assert(imgux::frame_default_input() != nullptr);
+		return imgux::frame_read(output, info, *imgux::frame_default_input());
+	}
+	
+	template<typename T>
+	inline bool frame_write(const T& input, const frame_info& info)
+	{
+		assert(imgux::frame_default_output() != nullptr);
+		return imgux::frame_write(input, info, *imgux::frame_default_output());
+	}
+	
 }
 
 #endif
