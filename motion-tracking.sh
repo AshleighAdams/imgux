@@ -16,7 +16,7 @@ FLOW_SCALE=0.5 # decrease this until your CPU's core usage is does not exceede t
 > /dev/null &
 
 #./videosource "$INPUT_SOURCE" $INPUT_OPTIONS \
-./screensource --scale=0.3 \
+./screensource --scale=0.7 \
 	|tee bg.raw \
 	|./opticalflow --winsize=20 --visualize --scale=$FLOW_SCALE \
 > flow.raw
