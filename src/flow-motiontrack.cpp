@@ -8,22 +8,82 @@
 #include <functional>
 #include <algorithm>
 #include <mutex>
+#include <unordered_map>
 
 struct Island
 {
 	double x, y, w, h, xvel, yvel;
-	bool eaten = false;
+	bool eaten = false, found_owner = false;
 	double avg_xvel, avg_yvel, eaten_count;
 	Island(double x, double y, double w, double h, double xvel, double yvel) : x(x), y(y), w(w), h(h), xvel(xvel), yvel(yvel), avg_xvel(xvel), avg_yvel(yvel), eaten_count(1)
 	{
 	}
-	double cx()
+	double cx() const
 	{
 		return x + w / 2.0;
 	}
-	double cy()
+	double cy() const
 	{
 		return y + h / 2.0;
+	}
+};
+
+struct Tracked
+{
+	double x, y, w, h, vx, vy;
+	size_t lifetime = 0;
+	size_t missing_for = 0;
+	size_t id = 0;
+	double cx() const
+	{
+		return x + w / 2.0;
+	}
+	double cy() const
+	{
+		return y + h / 2.0;
+	}
+	
+	double probably_is(const Island& island)
+	{
+		double distance_thresh_x = this->w + 0.02; // + 32px @ 640px
+		double distance_x = std::abs(this->cx() - island.cx());
+		double distance_prob_x = 1.0 - distance_x / distance_thresh_x;
+		
+		double distance_thresh_y = this->h + 0.02;
+		double distance_y = std::abs(this->cy() - island.cy());
+		double distance_prob_y = 1.0 - distance_y / distance_thresh_y;
+		
+		return (distance_prob_x + distance_prob_y) / 2.0;
+	}
+	
+	double is(std::vector<Island*> islands)
+	{
+		double sx, sy, ex, ey; // startx/y endx/y
+		bool first = true;
+		
+		for(Island* island : islands)
+		{
+			if(first)
+			{
+				sx = sy = island->x;
+				ex = ey = island->y;
+				first = false;
+			}
+			
+			double iex = island->x + island->w;
+			double iey = island->y + island->h;
+			
+			if(island->x < sx) sx = island->x;
+			if(island->y < sy) sy = island->y;
+			
+			if(iex > ex) ex = iex;
+			if(iey > ey) ey = iey;
+		}
+		
+		this->x = sx;
+		this->y = sy;
+		this->w = ex - sx;
+		this->h = ey - sy;
 	}
 };
 
@@ -31,8 +91,8 @@ int main(int argc, char** argv)
 {
 	imgux::arguments_add("background-frame", "", "The input frame to draw over");
 	imgux::arguments_add("flow-frame", "/dev/stdin", "The input frame to for optical flow");
-	imgux::arguments_add("threshold-big", "5", "Flow velocity to seed a frame.  Independant of frame size");
-	imgux::arguments_add("threshold-small", "2.5", "Once a seed has been found, how greedy should we be?.  Independant of frame size");
+	imgux::arguments_add("threshold-big", "10", "Flow velocity to seed a frame.  Independant of frame size");
+	imgux::arguments_add("threshold-small", "5", "Once a seed has been found, how greedy should we be?.  Independant of frame size");
 	imgux::arguments_parse(argc, argv);
 	
 	std::string	background_frame, flow_frame;
@@ -63,6 +123,7 @@ int main(int argc, char** argv)
 	
 	std::vector<Island> targets;
 	std::vector<Island> targets_grouped;
+	std::vector<Tracked> tracked;
 	std::mutex targets_lock;
 	double frame_motion = 0;
 	double frame_bg = 0;
@@ -93,9 +154,9 @@ int main(int argc, char** argv)
 				cv::Rect cvrect(x,y,w,h);
 				cv::Point center = cv::Point(x + w / 2, y + w / 2);
 				cv::Point to = cv::Point(center.x + vx, center.y + vy);
-				/*
+				
 				cv::rectangle(bg, cvrect, green);
-				cv::line(bg, center, to, red);*/
+				cv::line(bg, center, to, red);
 			}
 			
 			for(const Island& island : targets_grouped)
@@ -115,6 +176,23 @@ int main(int argc, char** argv)
 				cv::Point to = cv::Point(center.x + vx, center.y + vy);
 				
 				cv::rectangle(bg, cvrect, orange);
+				cv::line(bg, center, to, yellow);
+			}
+			
+			for(const Tracked& tg : tracked)
+			{
+				int x = (tg.x + tg.vx * t) * bg.cols;
+				int y = (tg.y + tg.vy * t) * bg.rows;
+				int w = tg.w * bg.cols;
+				int h = tg.h * bg.rows;
+				int vx = tg.vx * 1.0 * bg.cols;
+				int vy = tg.vy * 1.0 * bg.rows;
+				
+				cv::Rect cvrect(x,y,w,h);
+				cv::Point center = cv::Point(x + w / 2, y + w / 2);
+				cv::Point to = cv::Point(center.x + vx, center.y + vy);
+				
+				cv::rectangle(bg, cvrect, green);
 				cv::line(bg, center, to, yellow);
 			}
 			
@@ -355,10 +433,10 @@ int main(int argc, char** argv)
 			}
 			
 			// remove all eaten targets
-			std::remove_if(targets_grouped.begin(), targets_grouped.end(), [](const Island& a)
+			targets.erase(std::remove_if(targets_grouped.begin(), targets_grouped.end(), [](const Island& a)
 			{
 				return a.eaten;
-			});
+			}), targets_grouped.end());
 		}
 		
 		for(Island& self : targets_grouped)
@@ -366,6 +444,73 @@ int main(int argc, char** argv)
 			self.xvel = self.avg_xvel /= self.eaten_count;
 			self.yvel = self.avg_yvel /= self.eaten_count;
 		}
+		
+		// attempt to match to targets
+		std::unordered_map<Tracked*, std::vector<Island*>> map;
+		static int id = 0;
+		
+		for(Island& i : targets_grouped)
+		{
+			double best_prob = 0;
+			Tracked* best = nullptr;
+			
+			for(Tracked& t : tracked)
+			{
+				double prob = t.probably_is(i);
+				
+				if(best == nullptr or prob > best_prob)
+				{
+					best_prob = prob;
+					best = &t;
+				}
+			}
+			
+			if(best and best_prob > 0)
+			{
+				auto& list = map[best];
+				list.push_back(&i);
+			}
+			else // make new
+			{
+				Tracked nt;
+				nt.id = id++;
+				nt.vx = nt.vy = nt.x = nt.y = nt.w = nt.h = 0;
+				tracked.push_back(nt);
+				Tracked& val = tracked.back();
+				
+				auto& list = map[&val];
+				list.push_back(&i);
+				
+				std::cerr << "tracking " << id << "\n";
+			}
+		}
+		
+		for(Tracked& t : tracked)
+		{
+			auto it = map.find(&t);
+			t.lifetime++;
+			
+			if(it == map.end())
+			{
+				t.missing_for++;
+				continue;
+			}
+			
+			t.missing_for = 0;
+			t.is(it->second);
+		}
+		
+		tracked.erase(std::remove_if(tracked.begin(), tracked.end(), [](const Tracked& t)
+		{
+			bool ret = t.missing_for > 15;
+			
+			if(ret)
+			{
+				std::cerr << "lost " << t.id << "\n";
+			}
+			
+			return ret;
+		}), tracked.end());
 		
 		targets_lock.unlock();
 		
