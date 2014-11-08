@@ -1,2 +1,10 @@
 *.o
 *.so
+*.avi
+*.pipe
+opticalflow
+showframe
+videosource
+screensource
+recordframes
+flow-motiontrack
