@@ -551,19 +551,35 @@ int main(int argc, char** argv)
 			}
 		}
 		
+		
+		auto write_update = [](const Tracked& self){
+			// format: update: id=ID pos=X,Y size=W,H vel=VX,VY age=LIFETIME seen=MISSING_FOR
+			std::cerr << "update target:" 
+				<< " id="   << self.id
+				<< " pos="  << self.x << "," << self.y
+				<< " size=" << self.w << "," << self.h
+				<< " vel="  << self.vx << "," << self.vy
+				<< " age="  << self.lifetime
+				<< " seen=" << self.missing_for
+			<<"\n";
+		};
+		
+		std::cerr << "update: " << t << "\n";
+		
 		for(Tracked& t : tracked)
 		{
 			auto it = map.find(&t);
 			t.lifetime++;
 			
 			if(it == map.end())
-			{
 				t.missing_for++;
-				continue;
+			else
+			{
+				t.missing_for = 0;
+				t.is(it->second, delta);
 			}
 			
-			t.missing_for = 0;
-			t.is(it->second, delta);
+			write_update(t);
 		}
 		
 		tracked.erase(std::remove_if(tracked.begin(), tracked.end(), [](const Tracked& t)
