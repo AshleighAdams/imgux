@@ -38,7 +38,7 @@ static void HSVtoRGB(double h, double s, double v, double& r, double& g, double&
 static void colorizeFlow(const cv::Mat &u, cv::Mat &dst)
 {
 	using namespace cv;
-	double max_vel = 0.25;
+	double max_vel = 10;
 	
 	dst.create(u.size(), CV_8UC3);
 	for (int y = 0; y < u.rows; ++y)
@@ -99,12 +99,11 @@ int main(int argc, char** argv)
 	imgux::arguments_get("poly-n", poly_n);
 	imgux::arguments_get("poly-sigma", poly_sigma);
 	
-	bool colourize, visualize, velocity_fix;
+	bool colourize, visualize;
 	double s = 1.0;
 	imgux::arguments_get("colourize", colourize);
 	imgux::arguments_get("scale", s);
 	imgux::arguments_get("visualize", visualize);
-	imgux::arguments_get("velocity-fix", velocity_fix);
 	s = 1.0/s;
 	
 	imgux::frame_setup();
@@ -118,26 +117,15 @@ int main(int argc, char** argv)
 	std::stringstream ss;
 	std::string frameinfo_ext;
 	
-	ss << ";flow-winsize=" << std::fixed << winsize << "\n";
+	ss << ";flow-winsize=" << std::fixed << winsize << ";";
 	frameinfo_ext = ss.str();	
-	
-	std::regex time_regex("time=([0-9\\.]+)");
-	std::smatch match;
-	double time = 0.0, delta = 1.0;
-	
+		
 	cv::Mat GetImg;
 	cv::Mat prvs, next;
 	
 	imgux::frame_read(GetImg, info);
 	cv::resize(GetImg, prvs, cv::Size(GetImg.size().width/s, GetImg.size().height/s));
 	cv::cvtColor(prvs, prvs, CV_BGR2GRAY);
-	
-	if(velocity_fix and std::regex_search(info.info, match, time_regex))
-	{
-		std::string str = match[1];
-		time = std::strtod(str.c_str(), 0);
-	}
-	
 	
 	while (true)
 	{
@@ -146,30 +134,17 @@ int main(int argc, char** argv)
 		cv::resize(GetImg, next, cv::Size(GetImg.size().width/s, GetImg.size().height/s) );
 		cv::cvtColor(next, next, CV_BGR2GRAY);		
 		
-		if(velocity_fix and std::regex_search(info.info, match, time_regex))
-		{
-			std::string str = match[1];
-			double new_time = std::strtod(str.c_str(), 0);
-			delta = new_time - time;
-			time = new_time;
-		}
-		else if(velocity_fix)
-			std::cerr << "opticalflow: warning: could not find `time' in the frame information!\n";
-		
 		info.info += frameinfo_ext;
 		
 		cv::Mat flow;
 		cv::calcOpticalFlowFarneback(prvs, next, flow, pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0);// | cv::OPTFLOW_FARNEBACK_GAUSSIAN);
 		
-		if(velocity_fix) // make these readings time-independant
+		for(int y = 0; y < flow.rows; y++)
+		for(int x = 0; x < flow.cols; x++)
 		{
-			for(int y = 0; y < flow.rows; y++)
-			for(int x = 0; x < flow.cols; x++)
-			{
-				cv::Point2f& vec = flow.at<cv::Point2f>(y, x);
-				vec.x *= delta;
-				vec.y *= delta;
-			}
+			cv::Point2f& vec = flow.at<cv::Point2f>(y, x);
+			vec.x *= 15.0; // is this srsly 'cause of the FPS?
+			vec.y *= 15.0;
 		}
 		
 		if(colourize || visualize)

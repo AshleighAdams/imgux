@@ -31,8 +31,8 @@ int main(int argc, char** argv)
 {
 	imgux::arguments_add("background-frame", "", "The input frame to draw over");
 	imgux::arguments_add("flow-frame", "/dev/stdin", "The input frame to for optical flow");
-	imgux::arguments_add("threshold-big", "0.25", "Flow velocity to seed a frame.  Independant of frame size");
-	imgux::arguments_add("threshold-small", "0.1", "Once a seed has been found, how greedy should we be?.  Independant of frame size");
+	imgux::arguments_add("threshold-big", "5", "Flow velocity to seed a frame.  Independant of frame size");
+	imgux::arguments_add("threshold-small", "2.5", "Once a seed has been found, how greedy should we be?.  Independant of frame size");
 	imgux::arguments_parse(argc, argv);
 	
 	std::string	background_frame, flow_frame;
@@ -64,8 +64,8 @@ int main(int argc, char** argv)
 	std::vector<Island> targets;
 	std::vector<Island> targets_grouped;
 	std::mutex targets_lock;
-	size_t frame_motion = 0;
-	size_t frame_bg = 0;
+	double frame_motion = 0;
+	double frame_bg = 0;
 	double winsize = 0, winsize_xperc = 0, winsize_yperc = 0;
 	
 	std::thread t_bg([&]
@@ -74,17 +74,20 @@ int main(int argc, char** argv)
 		{
 			if(!imgux::frame_read(bg, bginfo, bgstream))
 				break;
+			frame_bg = imgux::frameinfo_time(bginfo);
+			
+			double t = frame_bg - frame_motion;
 			
 			targets_lock.lock();
 				
 			for(const Island& island : targets)
 			{
-				int x = island.x * bg.cols;
-				int y = island.y * bg.rows;
+				int x = (island.x + island.avg_xvel * t) * bg.cols;
+				int y = (island.y + island.avg_yvel * t) * bg.rows;
 				int w = island.w * bg.cols;
 				int h = island.h * bg.rows;
-				int vx = island.xvel * 20.0 * bg.cols;
-				int vy = island.yvel * 20.0 * bg.rows;
+				int vx = island.xvel * 1.0 * bg.cols;
+				int vy = island.yvel * 1.0 * bg.rows;
 				
 				x++;y++;w-=2;h-=2;
 				cv::Rect cvrect(x,y,w,h);
@@ -99,13 +102,13 @@ int main(int argc, char** argv)
 			{
 				if(island.eaten)
 					continue;
-				
-				int x = island.x * bg.cols;
-				int y = island.y * bg.rows;
+					
+				int x = (island.x + island.avg_xvel * t) * bg.cols;
+				int y = (island.y + island.avg_yvel * t) * bg.rows;
 				int w = island.w * bg.cols;
 				int h = island.h * bg.rows;
-				int vx = island.xvel * 20.0 * bg.cols;
-				int vy = island.yvel * 20.0 * bg.rows;
+				int vx = island.avg_xvel * 1.0 * bg.cols;
+				int vy = island.avg_yvel * 1.0 * bg.rows;
 				
 				cv::Rect cvrect(x,y,w,h);
 				cv::Point center = cv::Point(x + w / 2, y + w / 2);
@@ -194,9 +197,8 @@ int main(int argc, char** argv)
 			winsize = imgux::frameinfo_number("flow-winsize", flowinfo);
 			if(winsize == 0)
 			{
-				std::cerr << "flow-motiontrack: could not locate flow-winsize\n";
-				std::cerr << flowinfo.info << "\n";
-				break;
+				std::cerr << "flow-motiontrack: could not locate flow-winsize, defaulting to 15: " << flowinfo.info << "\n";
+				winsize = 15.0;
 			}
 			winsize_xperc = winsize / (double)flow.size().width;
 			winsize_yperc = winsize / (double)flow.size().height;
@@ -212,7 +214,7 @@ int main(int argc, char** argv)
 		targets_lock.lock();
 		targets.clear();
 		
-		frame_motion = imgux::frameinfo_frame(flowinfo);
+		frame_motion = imgux::frameinfo_time(flowinfo);
 		
 		int minx = 0, maxx = 0, miny = 0, maxy = 0;
 		double countvel=0, velx=0, vely = 0;
@@ -236,6 +238,18 @@ int main(int argc, char** argv)
 					if(yy < miny) miny = yy;
 					if(yy > maxy) maxy = yy;
 					
+					{
+						cv::Point2f& vel = flow.at<cv::Point2f>(yy, xx);
+						float speed = sqrt(vel.x*vel.x + vel.y*vel.y);
+						
+						if(speed > big_threshold) // only count velocity from the larger thresholds so noise and stuff doesn't play any roles
+						{
+							countvel++;
+							velx += vel.x;
+							vely += vel.y;
+						}
+					}
+
 					b = 1;
 				}
 			}
@@ -262,12 +276,12 @@ int main(int argc, char** argv)
 				float sizey = float(maxy - miny) / (float)blobs.rows;
 				velx = velx / countvel / (float)blobs.rows;
 				vely = vely / countvel / (float)blobs.rows;
-				/*
+				
 				xperc += winsize_xperc / 2.0;
 				sizex -= winsize_xperc; // don't /2, as when we took xperc away, this shifted half
 				yperc += winsize_yperc / 2.0;
 				sizey -= winsize_yperc;
-				*/
+				
 				if(sizex > 0.01 and sizey > 0.01)
 					targets.emplace_back(xperc, yperc, sizex, sizey, velx, vely);
 			}
