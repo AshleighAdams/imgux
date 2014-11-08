@@ -226,8 +226,10 @@ int main(int argc, char** argv)
 			
 			for(const Tracked& tg : tracked)
 			{
-				int x = (tg.x + tg.vx * t) * bg.cols;
-				int y = (tg.y + tg.vy * t) * bg.rows;
+				double td = t * double(tg.missing_for + 1);
+				
+				int x = (tg.x + tg.vx * td) * bg.cols;
+				int y = (tg.y + tg.vy * td) * bg.rows;
 				int w = tg.avgw * bg.cols;
 				int h = tg.avgh * bg.rows;
 				int vx = tg.vx * 1.0 * bg.cols;
@@ -569,9 +571,7 @@ int main(int argc, char** argv)
 			bool ret = t.missing_for > 15;
 			
 			if(ret)
-			{
 				std::cerr << "lost " << t.id << "\n";
-			}
 			
 			return ret;
 		}), tracked.end());
