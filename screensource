@@ -2,10 +2,10 @@
 
 export LD_LIBRARY_PATH=.
 
-FPS=15
-QUALITY=0
+[[ ! $FPS ]] && FPS=15
+[[ ! $QUALITY ]] && QUALITY=0
+[[ ! $SCREEN_RES ]] && SCREEN_RES="" # -s $SCREEN_RES
 SOURCE=".screencap.avi"
-SCREEN_RES="" # -s $SCREEN_RES
 
 rm .screencap.avi
 mkfifo .screencap.avi

@@ -78,8 +78,8 @@ struct Tracked
 		{
 			if(first)
 			{
-				sx = sy = island->x;
-				ex = ey = island->y;
+				sx = ex = island->x;
+				sy = ey = island->y;
 				first = false;
 			}
 			
@@ -98,7 +98,7 @@ struct Tracked
 		this->w = ex - sx;
 		this->h = ey - sy;
 		
-		if(this->lifetime != 0)
+		if(this->lifetime > 1)
 		{
 			// calculate avg vel
 			this->_center_history.push_back(std::tuple<double,double>{(this->cx() - scx) / delta, (this->cy() - scy) / delta});
