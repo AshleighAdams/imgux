@@ -1,16 +1,17 @@
 #!/bin/bash
 
 export LD_LIBRARY_PATH=.
+export PATH=$PATH:.
 
 [[ ! $FPS ]] && FPS=15
 [[ ! $QUALITY ]] && QUALITY=0
 [[ ! $SCREEN_RES ]] && SCREEN_RES="" # -s $SCREEN_RES
 SOURCE=".screencap.avi"
 
-rm .screencap.avi
-mkfifo .screencap.avi
+rm $SOURCE
+mkfifo $SOURCE
 
-./videosource "$SOURCE" $@ &
+videosource "$SOURCE" $@ &
 
 avconv \
 	-vsync 1 -async 1 \

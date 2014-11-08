@@ -50,15 +50,16 @@ struct Tracked
 	double probably_is(const Island& island, double delta) // TODO: factor delta in to distance eq.
 	{
 		delta = delta * double(this->missing_for + 1);
+		double size_grow = double(this->missing_for) * 0.02; // the longer ago we seen this, the bigger the area may occupy
 		
 		double targx = this->cx() + this->vx * delta;
 		double targy = this->cy() + this->vy * delta;
 		
-		double distance_thresh_x = this->avgw + 0.02; // + 32px @ 640px
+		double distance_thresh_x = this->avgw + size_grow; // + 32px @ 640px
 		double distance_x = std::abs(targx - island.cx());
 		double distance_prob_x = 1.0 - distance_x / distance_thresh_x;
 		
-		double distance_thresh_y = this->avgh + 0.02;
+		double distance_thresh_y = this->avgh + size_grow;
 		double distance_y = std::abs(targy - island.cy());
 		double distance_prob_y = 1.0 - distance_y / distance_thresh_y;
 		
@@ -182,7 +183,8 @@ int main(int argc, char** argv)
 			double t = frame_bg - frame_motion;
 			
 			targets_lock.lock();
-				
+			
+			/*
 			for(const Island& island : targets)
 			{
 				int x = (island.x + island.avg_xvel * t) * bg.cols;
@@ -220,6 +222,7 @@ int main(int argc, char** argv)
 				cv::rectangle(bg, cvrect, orange);
 				cv::line(bg, center, to, orange);
 			}
+			*/
 			
 			for(const Tracked& tg : tracked)
 			{
@@ -234,8 +237,17 @@ int main(int argc, char** argv)
 				cv::Point center = cv::Point(x + w / 2, y + w / 2);
 				cv::Point to = cv::Point(center.x + vx, center.y + vy);
 				
-				cv::rectangle(bg, cvrect, green);
-				cv::line(bg, center, to, green);
+				if((tg.lifetime - tg.missing_for) > 10)
+				{
+					auto col = tg.missing_for < 5 ? green : yellow;
+					cv::rectangle(bg, cvrect, col);
+					cv::line(bg, center, to, col);
+				}
+				else
+				{
+					cv::rectangle(bg, cvrect, orange);
+					cv::line(bg, center, to, orange);
+				}
 			}
 			
 			targets_lock.unlock();
