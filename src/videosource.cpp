@@ -82,11 +82,13 @@ int main(int argc, char** argv)
 	
 	cv::Size targsize = cv::Size((double)frame.size().width * scale, (double)frame.size().height * scale);
 	
+	size_t i = 0;
+	
 	while(true)
 	{
 		double t = time();
 		std::stringstream ss;
-		ss << std::fixed << "time=" << t << (index == -1 ? ";device" : ";name=") << file;
+		ss << std::fixed << "time=" << t << ";frame=" << i++ << ";source=" << file;
 		
 		imgux::frame_info info;
 		info.info = ss.str();

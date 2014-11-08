@@ -115,6 +115,12 @@ int main(int argc, char** argv)
 	if(visualize)
 		cv::namedWindow("Optical Flow");
 	
+	std::stringstream ss;
+	std::string frameinfo_ext;
+	
+	ss << ";flow-winsize=" << std::fixed << winsize << "\n";
+	frameinfo_ext = ss.str();	
+	
 	std::regex time_regex("time=([0-9\\.]+)");
 	std::smatch match;
 	double time = 0.0, delta = 1.0;
@@ -149,6 +155,8 @@ int main(int argc, char** argv)
 		}
 		else if(velocity_fix)
 			std::cerr << "opticalflow: warning: could not find `time' in the frame information!\n";
+		
+		info.info += frameinfo_ext;
 		
 		cv::Mat flow;
 		cv::calcOpticalFlowFarneback(prvs, next, flow, pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0);// | cv::OPTFLOW_FARNEBACK_GAUSSIAN);

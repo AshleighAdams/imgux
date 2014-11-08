@@ -15,6 +15,9 @@ FLOW_SCALE=0.5 # decrease this until your CPU's core usage is does not exceede t
 	|./recordframes --file="tracked.avi" \
 > /dev/null &
 
+
+
+#
 #./videosource "$INPUT_SOURCE" $INPUT_OPTIONS \
 ./screensource --scale=0.25 \
 	|tee bg.raw \

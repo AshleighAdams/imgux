@@ -37,6 +37,9 @@ namespace imgux
 	
 	// generic things to read frame infos
 	double frameinfo_time(const imgux::frame_info& info);
+	size_t frameinfo_frame(const imgux::frame_info& info);
+	double frameinfo_number(std::string name, const imgux::frame_info& info);
+	std::string frameinfo_string(std::string name, const imgux::frame_info& info);
 	
 	// opencv
 	bool frame_read(cv::Mat& output, imgux::frame_info& info, std::istream& instream);

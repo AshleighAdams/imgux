@@ -199,6 +199,96 @@ double imgux::frameinfo_time(const imgux::frame_info& info)
 	return time;
 }
 
+size_t imgux::frameinfo_frame(const imgux::frame_info& info)
+{
+	static std::regex frame_regex("frame=([0-9]+)");
+	std::smatch match;
+	size_t frame = 0;
+	
+	if(std::regex_search(info.info, match, frame_regex))
+	{
+		std::string str = match[1];
+		std::stringstream ss;
+		ss << str;
+		ss >> frame;
+	}
+	
+	return frame;
+}
+
+void replace_all(std::string& str, const std::string& from, const std::string& to)
+{
+	size_t start_pos = 0;
+	while((start_pos = str.find(from, start_pos)) != std::string::npos)
+	{
+		str.replace(start_pos, from.length(), to);
+		start_pos += to.length(); // Handles case where 'to' is a substring of 'from'
+	}
+}
+
+void escape_regex(std::string& input)
+{
+	replace_all(input, ".", "\\.");
+	replace_all(input, "-", "\\-");
+	replace_all(input, "+", "\\+");
+	replace_all(input, "$", "\\$");
+	replace_all(input, "^", "\\^");
+	replace_all(input, "[", "\\[");
+	replace_all(input, "]", "\\]");
+	replace_all(input, "(", "\\(");
+	replace_all(input, ")", "\\)");
+	replace_all(input, "^", "\\^");
+}
+
+double imgux::frameinfo_number(std::string name, const imgux::frame_info& info)
+{
+	escape_regex(name);
+	
+	static std::unordered_map<std::string, std::regex> regexes; // im not sure re-compiling so often is a good idea...
+	auto kv = regexes.find(name);
+	
+	if(kv == regexes.end())
+	{
+		regexes[name] = std::regex(name + "=([0-9\\.]+);?");
+		kv = regexes.find(name);
+		assert(kv != regexes.end());
+	}
+	
+	std::smatch match;
+	if(std::regex_search(info.info, match, kv->second))
+	{
+		std::string str = match[1];
+		return std::strtod(str.c_str(), 0);
+	}
+	
+	return 0.0;
+}
+
+std::string imgux::frameinfo_string(std::string name, const imgux::frame_info& info)
+{
+	escape_regex(name);
+	
+	static std::unordered_map<std::string, std::regex> regexes; // im not sure re-compiling so often is a good idea...
+	auto kv = regexes.find(name);
+	
+	if(kv == regexes.end())
+	{
+		regexes[name] = std::regex(name + "=(.+?);?");
+		kv = regexes.find(name);
+		assert(kv != regexes.end());
+	}
+	
+	std::smatch match;
+	
+	if(std::regex_search(info.info, match, kv->second))
+	{
+		std::string str = match[1];
+		return str;
+	}
+	
+	return "";
+}
+
 // OpenCV frame read/writers
 bool imgux::frame_read(cv::Mat& output, frame_info& info, std::istream& sin)
 {
