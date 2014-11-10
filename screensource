@@ -5,7 +5,7 @@ export PATH=$PATH:.
 
 [[ ! $FPS ]] && FPS=15
 [[ ! $QUALITY ]] && QUALITY=0
-[[ ! $SCREEN_RES ]] && SCREEN_RES="" # -s $SCREEN_RES
+[[ ! $SCREEN_RES ]] && SCREEN_RES="-s 1920x1080"
 SOURCE=".screencap.avi"
 
 rm $SOURCE
@@ -16,9 +16,9 @@ videosource "$SOURCE" $@ &
 avconv \
 	-vsync 1 -async 1 \
 	$AUDIO_DEVICE \
-	-f x11grab -r $FPS -i :0.0 \
+	-f x11grab $SCREEN_RES -r $FPS -i :0.0 \
 	-qscale $QUALITY \
 	-y "$SOURCE" -v 0 \
-> /dev/null # we don't want to screw with the output...
+#> /dev/null # we don't want to screw with the output...
 
 wait

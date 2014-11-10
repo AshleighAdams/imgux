@@ -50,7 +50,7 @@ struct Tracked
 	double probably_is(const Island& island, double delta) // TODO: factor delta in to distance eq.
 	{
 		delta = delta * double(this->missing_for + 1);
-		double size_grow = double(this->missing_for) * 0.02; // the longer ago we seen this, the bigger the area may occupy
+		double size_grow = double(this->missing_for) * 0.005; // the longer ago we seen this, the bigger the area may occupy
 		
 		double targx = this->cx() + this->vx * delta;
 		double targy = this->cy() + this->vy * delta;
@@ -224,31 +224,65 @@ int main(int argc, char** argv)
 			}
 			*/
 			
+			auto dotted_line = [](cv::Mat& mat, const cv::Point& from, const cv::Point& to, const cv::Scalar& col, int length = 10, float filled = 0.7)
+			{
+				cv::LineIterator it(mat, from, to, 8);
+				int fill = (int)((float)length * filled);
+				for(int i = 0; i < it.count; i++,it++)
+				{
+					if ( i % length > fill )
+					{
+						(*it)[0] = col[0];
+						(*it)[1] = col[1];
+						(*it)[2] = col[2];
+					}
+				}
+			};
+			
+			auto dotted_rectangle = [&dotted_line](cv::Mat& mat, const cv::Rect& rect, const cv::Scalar& col, int length = 10, float filled = 0.7)
+			{
+				cv::Point tl{rect.x, rect.y};
+				cv::Point br{rect.x + rect.width, rect.y + rect.height};
+				cv::Point tr{br.x, tl.y};
+				cv::Point bl{tl.x, br.y};
+				
+				dotted_line(mat, tl, tr, col, length, filled);
+				dotted_line(mat, tr, br, col, length, filled);
+				dotted_line(mat, br, bl, col, length, filled);
+				dotted_line(mat, bl, tl, col, length, filled);
+			};
+			
 			for(const Tracked& tg : tracked)
 			{
 				double td = t * double(tg.missing_for + 1);
 				
-				int x = (tg.x + tg.vx * td) * bg.cols;
-				int y = (tg.y + tg.vy * td) * bg.rows;
+				double dx = tg.x + tg.vx * t;
+				double dy = tg.y + tg.vy * t;
+				
+				int x = (dx/* + tg.vx * td*/) * bg.cols;
+				int y = (dy/* + tg.vy * td*/) * bg.rows;
 				int w = tg.avgw * bg.cols;
 				int h = tg.avgh * bg.rows;
 				int vx = tg.vx * 1.0 * bg.cols;
 				int vy = tg.vy * 1.0 * bg.rows;
+								
+				int bits = 4;
+				int bitshifts = 1 << bits;
 				
 				cv::Rect cvrect(x,y,w,h);
-				cv::Point center = cv::Point(x + w / 2, y + w / 2);
-				cv::Point to = cv::Point(center.x + vx, center.y + vy);
+				cv::Point center = cv::Point((x + w / 2.0), (y + w / 2.0));
+				cv::Point to = cv::Point((center.x + vx), (center.y + vy));
 				
 				if((tg.lifetime - tg.missing_for) > 10)
 				{
 					auto col = tg.missing_for < 5 ? green : yellow;
-					cv::rectangle(bg, cvrect, col);
-					cv::line(bg, center, to, col);
+					cv::rectangle(bg, cvrect, col, 1, 8);
+					cv::line(bg, center, to, col, 1, 8);
 				}
 				else
 				{
-					cv::rectangle(bg, cvrect, orange);
-					cv::line(bg, center, to, orange);
+					dotted_rectangle(bg, cvrect, orange);
+					dotted_line(bg, center, to, orange);
 				}
 			}
 			
@@ -585,6 +619,9 @@ int main(int argc, char** argv)
 		tracked.erase(std::remove_if(tracked.begin(), tracked.end(), [](const Tracked& t)
 		{
 			bool ret = t.missing_for > 15;
+			
+			if(t.missing_for > 1 and t.lifetime < 15) // was probably noise, ignore this, remove it now
+				ret = true;
 			
 			if(ret)
 				std::cerr << "lost " << t.id << "\n";

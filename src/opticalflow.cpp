@@ -1,6 +1,7 @@
 #include <imgux.hpp>
 
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <sstream>
 #include <regex>
@@ -78,7 +79,35 @@ static void colorizeFlow(const cv::Mat &u, cv::Mat &dst)
 
 double pyr_scale; int levels; int winsize; int iterations; int poly_n; double poly_sigma;
 bool colourize, visualize;
+std::string visualize_out;
 double s = 1.0;
+
+void do_stuff_with_flow(const cv::Mat& flow, const cv::Mat& next, const imgux::frame_info& info)
+{
+	if(colourize || visualize)
+	{
+		cv::Mat cflow;
+		cv::cvtColor(next, cflow, CV_GRAY2BGR);
+		
+		colorizeFlow(flow, cflow);
+		
+		if(colourize)
+			imgux::frame_write(cflow, info);
+		if(visualize and visualize_out != "")
+		{
+			static std::ofstream vo(visualize_out);
+			imgux::frame_write(cflow, info, vo);
+		}
+		else if(visualize)
+		{
+			cv::imshow("Optical Flow", cflow);
+			cv::waitKey(1);
+		}
+	}
+	
+	if(!colourize)
+		imgux::frame_write(flow, info);
+}
 
 int main_gpu()
 {
@@ -105,7 +134,7 @@ int main_gpu()
 	cv::gpu::resize(prvs_gpu_o, prvs_gpu_c, cv::Size(GetImg.size().width/s, GetImg.size().height/s) );
 	cv::gpu::cvtColor(prvs_gpu_c, prvs_gpu, CV_BGR2GRAY);
 	
-	bool use_farneback = false;
+	bool use_farneback = true;
 	
 	cv::gpu::FarnebackOpticalFlow farneback_flow;
 	farneback_flow.pyrScale = pyr_scale;
@@ -170,32 +199,7 @@ int main_gpu()
 			vec.y = fy * 15.0;
 		}
 		
-		//
-		if(colourize || visualize)
-		{
-			cv::Mat cflow;
-			cv::cvtColor(prvs, cflow, CV_GRAY2BGR);
-			colorizeFlow(flow, cflow);
-			
-			if(colourize)
-				imgux::frame_write(cflow, info);
-			if(visualize)
-			{
-				cv::imshow("Optical Flow", cflow);
-				cv::waitKey(1);
-			}
-		}
-		
-		if(!colourize)
-			imgux::frame_write(flow, info);
-		
-		
-		/*
-		drawOptFlowMap_gpu(flow_x, flow_y, cflow, 10 , CV_RGB(0, 255, 0));
-		imshow("OpticalFlowFarneback", cflow);
-		*/
-		
-		
+		do_stuff_with_flow(flow, next, info);
 	}
 	
 	return 0;
@@ -230,8 +234,9 @@ int main_cpu()
 		cv::Mat flow;
 		
 		cv::calcOpticalFlowFarneback(prvs, next, flow, pyr_scale, levels, winsize, iterations, poly_n, poly_sigma, 0);// | cv::OPTFLOW_FARNEBACK_GAUSSIAN);
-		//cv::calcOpticalFlowSF(prvs, next, flow, 3, 2, 4, 4.1, 25.5, 18, 55.0, 25.5, 0.35, 18, 55.0, 25.5, 10);
+		//cv::calcOpticalFlowSF(prvs, next, flow, 3, 2, 4, 4.1, 25.5, 18, 55.0, 25.5, 0.35, 18, 55.0, 25.5, 10); // super slow but accurate
 		
+		prvs = next.clone();
 		
 		for(int y = 0; y < flow.rows; y++)
 		for(int x = 0; x < flow.cols; x++)
@@ -241,25 +246,7 @@ int main_cpu()
 			vec.y *= 15.0;
 		}
 		
-		if(colourize || visualize)
-		{
-			cv::Mat cflow;
-			cv::cvtColor(prvs, cflow, CV_GRAY2BGR);
-			colorizeFlow(flow, cflow);
-			
-			if(colourize)
-				imgux::frame_write(cflow, info);
-			if(visualize)
-			{
-				cv::imshow("Optical Flow", cflow);
-				cv::waitKey(1);
-			}
-		}
-		
-		if(!colourize)
-			imgux::frame_write(flow, info);
-		
-		prvs = next.clone();
+		do_stuff_with_flow(flow, next, info);
 	}
 	
 	return 0;
@@ -274,9 +261,10 @@ int main(int argc, char** argv)
 	imgux::arguments_add("poly-n", "5", "");
 	imgux::arguments_add("poly-sigma", "1.2", "");
 	
-	imgux::arguments_add("colourize", "0", "Should we produce a colourized hue (ang) sat (speed), val(speed) output");
+	imgux::arguments_add("colourize", "0", "0 = float_x, float_y (CV_32FC2); 1 = hue = byte_dir, sat = byte_speed, val = byte_speed (CV_8UC3|CV_BGR8);");
 	imgux::arguments_add("scale", "1.0", "Multiply size by this");
 	imgux::arguments_add("visualize", "0", "Visualize the flow?");
+	imgux::arguments_add("visualize-out", "", "File to write the visualized frame out. Empty for showing in a new window.");
 	imgux::arguments_add("velocity-fix", "1", "Should we multiply the velocity by the frame time?");
 	imgux::arguments_add("use-gpu", "auto", "auto|always|never");
 	
@@ -293,6 +281,7 @@ int main(int argc, char** argv)
 	imgux::arguments_get("colourize", colourize);
 	imgux::arguments_get("scale", s);
 	imgux::arguments_get("visualize", visualize);
+	imgux::arguments_get("visualize-out", visualize_out);
 	s = 1.0/s;
 
 	if(visualize)
