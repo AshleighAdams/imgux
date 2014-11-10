@@ -11,6 +11,10 @@
 #include <unordered_map>
 #include <list>
 
+size_t CONFIRMED_LIFETIME = 10;
+size_t MAX_MISSING_TIME = 30;
+double PROBABILITY_SIZE_GROW = 0.05; // grow the search area by 32px on a 640x640 image in all directions per second missing
+
 struct Island
 {
 	double x, y, w, h, xvel, yvel;
@@ -50,7 +54,7 @@ struct Tracked
 	double probably_is(const Island& island, double delta) // TODO: factor delta in to distance eq.
 	{
 		delta = delta * double(this->missing_for + 1);
-		double size_grow = double(this->missing_for) * 0.005; // the longer ago we seen this, the bigger the area may occupy
+		double size_grow = double(this->missing_for) * delta * PROBABILITY_SIZE_GROW; // the longer ago we seen this, the bigger the area may occupy
 		
 		double targx = this->cx() + this->vx * delta;
 		double targy = this->cy() + this->vy * delta;
@@ -273,7 +277,7 @@ int main(int argc, char** argv)
 				cv::Point center = cv::Point((x + w / 2.0), (y + w / 2.0));
 				cv::Point to = cv::Point((center.x + vx), (center.y + vy));
 				
-				if((tg.lifetime - tg.missing_for) > 10)
+				if((tg.lifetime - tg.missing_for) >= CONFIRMED_LIFETIME)
 				{
 					auto col = tg.missing_for < 5 ? green : yellow;
 					cv::rectangle(bg, cvrect, col, 1, 8);
@@ -618,9 +622,9 @@ int main(int argc, char** argv)
 		
 		tracked.erase(std::remove_if(tracked.begin(), tracked.end(), [](const Tracked& t)
 		{
-			bool ret = t.missing_for > 15;
+			bool ret = t.missing_for > MAX_MISSING_TIME;
 			
-			if(t.missing_for > 1 and t.lifetime < 15) // was probably noise, ignore this, remove it now
+			if(t.missing_for > 0 and t.lifetime < CONFIRMED_LIFETIME) // was probably noise, ignore this, remove it now
 				ret = true;
 			
 			if(ret)

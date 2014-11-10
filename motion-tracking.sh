@@ -12,6 +12,10 @@ INPUT_SOURCE=0
 #INPUT_OPTIONS=--rotate=180
 FLOW_SCALE=0.5 # decrease this until your CPU's core usage is does not exceed the core's maximum (else it won't run in real time)
 
+# uncomment these lines if you don't want to save recordings
+rm tracked.avi; mkfifo tracked.avi; cat tracked.avi > /dev/null &
+rm flow.avi; mkfifo flow.avi; cat flow.avi > /dev/null &
+
 # just draws a box for now...
 flow-motiontrack --background-frame=.bg.pipe --flow-frame=.flow.pipe \
 	| showframe --title="Tracked" \
